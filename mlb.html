@@ -6,36 +6,67 @@
     <title>Sane MLB Calendar</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.2/moment.min.js"></script>
+    <script src="http://momentjs.com/downloads/moment-timezone-with-data-2010-2020.min.js"></script>
+    <link href="//cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/css/select2.min.css" rel="stylesheet" />
+    <script src="//cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/select2.min.js"></script>
+    <link href="http://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet" type="text/css">
     <style>
+body {
+  font-family: 'Open Sans', sans-serif;
+}
 table {
   width: 100%;
+}
+td {
+  padding: 10px;
+}
+#calendar table tbody tr td {
+  vertical-align: top;
 }
 .month table {
   border-collapse: collapse;
 }
-
-td {
-  padding: 20px;
-}
 .month td, th {
   border: 1px solid #999;
   padding: 0;
-  text-align: left;
 }
-.month {
-}
+/*.month td {
+  position: relative;
+  height: 3em;
+}*/
 .monthTitle {
   text-align: center;
+}
+#header {
+  text-align: center;
+}
+.day {
+  float: left;
+}
+.time {
+  float: right;
+}
+.topRow {
+  font-size: .75em;
+  padding: 0 .25em;
+}
+.bottomRow {
+  font-size: 1em;
+  clear: left;
+  text-align: center;
+  margin-top: .25em;
+}
+.home {
+  background-color: #98bce9;
+}
+.away {
+  background-color: #d6e4f6;
 }
     </style>
   </head>
   <body>
-    <div id="source">
-      <textarea id="input"></textarea>
-      <br>
-      <button id="create" type="button">Make Calendar</button>
-    </div>
-    <div id="calendar"><!--  style="display:none;"> -->
+    <div id="header">Downloading Schedule Info...<span id="done">0</span>/30</div>
+    <div id="calendar">
       <table>
         <tbody>
           <tr>
@@ -153,17 +184,124 @@ td {
         </tbody>
       </table>
     </div>
+    <div>
+      <span class="home">Home Games</span>
+      &nbsp;&nbsp;
+      <span class="away">Away Games</span>
+      &nbsp;&nbsp;&nbsp;&nbsp;
+      <select id="teamSelect" style="display:none;width:15em;">
+      </select>
+    </div>
     <script>
-var year = 2015,
+var teamGames = { },
+    year = 2015,
     dateFormat = 'YYYY-MM-DD';
+
+var updateProgress = function() {
+  var done = Object.keys(teamGames).length;
+  if (done < 30) {
+    $('#done').text(done);
+  } else {
+    $('#header').html('Choose a team below to see their schedule...');
+    var options = Object.keys(teamGames)
+      .sort(function(a,b) {
+        return (teamGames[a].city + ' ' + teamGames[a].name).toLocaleLowerCase() >
+          (teamGames[b].city + ' ' + teamGames[b].name).toLocaleLowerCase() ? 1 : -1;
+      }).map(function(v,i) {
+        return '<option value="' + v + '">' +
+          teamGames[v].city + ' ' + teamGames[v].name +
+          '</option>';
+      }).join('');
+    $('#teamSelect').html(options);
+    $('#teamSelect').show();
+    $('#teamSelect').select2()
+  }
+};
+
+var getSchedule = function(teamId, cb) {
+  console.log('Fetching: ' + teamId);
+  $.ajax({
+    url: 'http://www.mlb.com/lookup/json/named.schedule_team_sponsors.bam?',
+    type: 'GET',
+    dataType: 'JSON',    
+    data: {
+      start_date: '\'2015/04/01\'',
+      end_date: '\'2015/10/31\'',
+      season: 2015,
+      game_type: '\'R\'',
+      team_id: teamId
+    },
+    success: function(response) {
+      cb(teamId, response.schedule_team_sponsors.schedule_team_complete.queryResults.row);
+    }
+  });
+};
+
+var addGames = function(teamId, cb) {
+  if (!teamGames[teamId]) {
+    getSchedule(teamId, function(teamId, rows) {
+      teamGames[teamId] = {
+        abbrev: rows[0].team_abbrev,
+        name: rows[0].team_brief,
+        city: rows[0].team_city
+      };
+
+      teamGames[teamId].games = rows.map(function(v,i) {
+        return {
+          time: moment.tz(v.game_time_et, "America/New_York").toISOString(),
+          opponent_id: v.opponent_id,
+          home: (v.home_away_sw === 'H' ? 'home' : 'away')
+        };
+      });
+      console.log('Done fetching: ' + teamId);
+      updateProgress();
+      cb();
+    });
+  }    
+};
+
+var getUnprocessed = function() {
+  var teams = [];
+  for (var teamId in teamGames) {
+    teams = teams.concat(teamGames[teamId].games.map(function(v,i) {
+      return v.opponent_id;
+    }));
+  }
+  teams = teams.filter(function(v,i) {
+    return !teamGames[v];
+  });
+  return new Set(teams);
+};
+
+var processTeamSet = function(teamSet) {
+  var total = teamSet.size,
+      done = 0;
+  if (total) {
+    teamSet.forEach(function(v) {
+      addGames(v, function() {
+        done++;
+        if (total === done) {
+          processTeamSet(getUnprocessed());
+        }
+      });
+    });
+  } else {
+    console.log('done');
+    updateProgress();
+  }  
+};
 
 var buildCell = function($cell,date) {
   $cell.addClass('date');
   $cell.attr('data-date', date.format(dateFormat));
-  $cell.text(date.date());
+  var inner = '<div class="topRow">' +
+    '<div class="day">' + date.date() + '</div>' +
+    '<div class="time"></div></div>' +
+    '<div class="bottomRow"><div class="opponent"></div></div>';
+  $cell.html(inner);
 };
 
-var initCal = function() {
+var buildCalendar = function() {
   $('.month').each(function() {
     var month = $(this).attr('data-month');
     var date = moment(year.toString() + '-' + month + '-01');
@@ -193,43 +331,35 @@ var initCal = function() {
   });
 };
 
-var fillCell = function(date, opponent, time) {
-  var dateParts = date.split(' ');
-  var month = dateParts[0].replace('.',''),
-      day = dateParts[1];
-  var m = moment(month + ' ' + day + ' ' + year, 'MMM D YYYY');
+var fillCalendar = function(teamId) {
+  if (!teamGames[teamId])
+    return;
 
-  var team = opponent.replace('at ',''),
-      location = (opponent.indexOf('at') === -1 ? 'home' : 'away');
+  $('.date').each(function() {
+    $(this).removeClass('home');
+    $(this).removeClass('away');
+    $(this).removeClass('hide');
+    $(this).find('.time:first').html();
+    $(this).find('.opponent:first').html();
+  });
 
-  var $cell = $('.date[data-date="' + m.format(dateFormat) + '"]');
-  $cell.attr('data-team', team);
-  $cell.attr('data-location', location);
-  $cell.attr('data-time', time);
-};
+  $('#header').html(teamGames[teamId].city + ' ' + teamGames[teamId].name + ' ' + year + ' Schedule');
 
-var populateCalendar = function() {
-  data = $($('#input').val());
-  data.find('table').each(function() {
-    $(this).find('tr').each(function(i) {
-      if (i === 0) return;
-
-      var date = $(this).find('td').eq(0).text(),
-          opponent = $(this).find('td').eq(1).text(),
-          time = $(this).find('td').eq(2).text();
-
-      fillCell(date,opponent,time);
-    });
+  teamGames[teamId].games.forEach(function(v,i) {
+    var date = moment(v.time);
+    $cell = $('.date[data-date="' + date.format(dateFormat) + '"]');
+    $cell.addClass(v.home);
+    $cell.find('.time:first').html(date.format('h:mm'));
+    $cell.find('.opponent:first').html(teamGames[v.opponent_id].abbrev);
   });
 };
 
-$('#create').click(function() {
-  populateCalendar();
-  $('#source').hide();
-  $('#calendar').show();
+$('#teamSelect').change(function() {
+  fillCalendar($(this).val());
 });
 
-initCal();
+processTeamSet(new Set(['147']));
+buildCalendar();
     </script>
   </body>
 </html>
