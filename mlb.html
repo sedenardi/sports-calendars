@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<meta charset="utf-8">
 <html>
   <head>
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
@@ -7,8 +6,8 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.2/moment.min.js"></script>
     <script src="http://momentjs.com/downloads/moment-timezone-with-data-2010-2020.min.js"></script>
-    <link href="//cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/css/select2.min.css" rel="stylesheet" />
-    <script src="//cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/select2.min.js"></script>
+    <link href="http://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/css/select2.min.css" rel="stylesheet" />
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/select2/4.0.0/js/select2.min.js"></script>
     <link href="http://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet" type="text/css">
     <style>
 body {
@@ -40,6 +39,9 @@ td {
 #header {
   text-align: center;
 }
+.date {
+  -webkit-print-color-adjust: exact;
+}
 .day {
   float: left;
 }
@@ -47,11 +49,11 @@ td {
   float: right;
 }
 .topRow {
-  font-size: .75em;
+  font-size: .5em;
   padding: 0 .25em;
 }
 .bottomRow {
-  font-size: 1em;
+  font-size: .8em;
   clear: left;
   text-align: center;
   margin-top: .25em;
@@ -214,7 +216,8 @@ var updateProgress = function() {
       }).join('');
     $('#teamSelect').html(options);
     $('#teamSelect').show();
-    $('#teamSelect').select2()
+    $('#teamSelect').select2();
+    $('#teamSelect').change();
   }
 };
 
@@ -350,7 +353,8 @@ var fillCalendar = function(teamId) {
     $cell = $('.date[data-date="' + date.format(dateFormat) + '"]');
     $cell.addClass(v.home);
     $cell.find('.time:first').html(date.format('h:mm'));
-    $cell.find('.opponent:first').html(teamGames[v.opponent_id].abbrev);
+    var opponent = (v.home === 'home' ? '' : '@') + teamGames[v.opponent_id].abbrev;
+    $cell.find('.opponent:first').html(opponent);
   });
 };
 
